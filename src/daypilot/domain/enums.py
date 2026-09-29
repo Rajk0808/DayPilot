@@ -20,3 +20,7 @@ class DependencyType(str, Enum):
     START_TO_START = "start_to_start"
     FINISH_TO_FINISH = "finish_to_finish"
     START_TO_FINISH = "start_to_finish"
+
+class ConstraintType(str, Enum):
+    HARD_CONSTRAINT = "hard_constraint"
+    SOFT_CONSTRAINT = "soft_constraint"
