@@ -1,5 +1,5 @@
 from __future__ import annotations
-from .enums import TaskStatus, Priority
+from .enums import SchedulingStatus, TaskStatus, Priority
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
@@ -10,7 +10,8 @@ class Task:
     id: str
     title: str
     description: str = ""
-    status: TaskStatus | None = None
+    status: TaskStatus = TaskStatus.NOT_STARTED
+    scheduling_status: SchedulingStatus = SchedulingStatus.UNSCHEDULED
     priority: Priority | None = None
     parent: Task | None = None
     children: list[Task] = field(default_factory=list)

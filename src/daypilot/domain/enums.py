@@ -1,4 +1,5 @@
 from enum import Enum
+from tkinter.messagebox import CANCEL
 
 
 class TaskStatus(str, Enum):
@@ -24,3 +25,21 @@ class DependencyType(str, Enum):
 class ConstraintType(str, Enum):
     HARD_CONSTRAINT = "hard_constraint"
     SOFT_CONSTRAINT = "soft_constraint"
+
+class SchedulingStatus(str, Enum):
+    SCHEDULED = "scheduled"
+    UNSCHEDULED = "unscheduled"
+
+
+class SchedulingFailureReason(str, Enum):
+    NO_AVAILABLE_WINDOW = "no_available_window"
+    INSUFFICIENT_TIME = "insufficient_time"
+    DEPENDENCY_BLOCKED = "dependency_blocked"
+    INVALID_STATE = "invalid_state"
+    ALREADY_SCHEDULED = "already_scheduled"
+
+class ObservationOutcome(str, Enum):
+    COMPLETED = "completed"
+    PARTIALLY_COMPLETED = "partially_completed"
+    CANCELLED = "cancelled"
+    NOT_STARTED = "not_started"
