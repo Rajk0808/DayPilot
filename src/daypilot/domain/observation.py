@@ -28,14 +28,20 @@ class Observation:
             raise ValueError(
                 "Scheduled Block doesn't belongs to the task provided."
             )
+        if self.metadata is None:
+            raise ValueError("Observation metadata cannot be None.")
         for name in ("actual_start", "actual_end"):
             timestamp = getattr(self, name)
-            if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+            if timestamp is None:
+                raise ValueError(f"{name.replace('_', ' ').capitalize()} cannot be None.")
+            if timestamp.utcoffset() is None:
                 raise ValueError(f"{name.replace('_', ' ').capitalize()} must be timezone-aware.")
             setattr(self, name, timestamp.astimezone(timezone.utc))
+        if not isinstance(self.outcome, ObservationOutcome):
+            raise ValueError("Observation outcome must be valid.")
         if self.actual_start >= self.actual_end:
             raise ValueError(
-                "Provided start and end are nt valid."
+                "Provided start and end are not valid."
             )
 
     @property
@@ -62,7 +68,8 @@ class Observation:
         if self.outcome == ObservationOutcome.COMPLETED:
             return timedelta(0)
         elif self.outcome == ObservationOutcome.PARTIALLY_COMPLETED:
-            return max(timedelta(0), self.scheduled_block.end - self.actual_end + self.start_delay)
+            planned_duration = self.scheduled_block.end - self.scheduled_block.start
+            return max(timedelta(0), planned_duration - self.actual_duration)
         elif self.outcome == ObservationOutcome.CANCELLED:
             return timedelta(0)
         else:  # NOT_STARTED
@@ -95,6 +102,23 @@ class ExecutionDeviation:
     def underran(self) -> bool:
         return self.duration_difference < timedelta(0)
 
+@dataclass(frozen=True)
+class ObservationHistorySummary:
+    total_actual_duration: timedelta
+    remaining_duration: timedelta
+    final_outcome: ObservationOutcome
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.total_actual_duration, timedelta):
+            raise ValueError("Total actual duration must be a timedelta.")
+        if self.total_actual_duration < timedelta(0):
+            raise ValueError("Total actual duration cannot be negative.")
+        if not isinstance(self.remaining_duration, timedelta):
+            raise ValueError("Remaining duration must be a timedelta.")
+        if self.remaining_duration < timedelta(0):
+            raise ValueError("Remaining duration cannot be negative.")
+        if not isinstance(self.final_outcome, ObservationOutcome):
+            raise ValueError("Final outcome must be valid.")
 
 def apply_observation(task, observation) -> None:
     if task is None or observation is None:
@@ -110,6 +134,17 @@ def apply_observation(task, observation) -> None:
     else:
         task.status = TaskStatus.NOT_STARTED
 
+
+def validate_observation_transition(task: Task, observation: Observation) -> None:
+    if task is None or observation is None:
+        raise ValueError("Task and Observation cannot be None.")
+    if task is not observation.task:
+        raise ValueError("Observation does not belong to the provided task.")
+    if task.status in (TaskStatus.COMPLETED, TaskStatus.CANCELLED):
+        raise ValueError("A terminal task cannot receive another observation.")
+    if task.status is TaskStatus.IN_PROGRESS and observation.outcome is ObservationOutcome.NOT_STARTED:
+        raise ValueError("NOT_STARTED observation cannot regress an in-progress task.")
+
 def resolve_scheduling_status(task, observation) -> None:
     if task is None or observation is None:
         raise ValueError("Task and Observation cannot be None.")
@@ -118,11 +153,13 @@ def resolve_scheduling_status(task, observation) -> None:
     task.scheduling_status = SchedulingStatus.UNSCHEDULED
 
 
-def process_observation(task, observation) -> None:
+
+def process_observation(task: Task, observation: Observation) -> None:
     if task is None or observation is None:
         raise ValueError("Task and Observation cannot be None.")
     if task is not observation.task:
         raise ValueError("Observation does not belong to the provided task.")
+    validate_observation_transition(task, observation)
     apply_observation(task, observation)
     resolve_scheduling_status(task, observation)
 
@@ -136,6 +173,7 @@ def calculate_observation_history(
         raise ValueError("Task cannot be None.")
     if observations is None:
         raise ValueError("Observations cannot be None.")
+    validate_observation_history(task, observations)
 
     total_actual_duration = timedelta(0)
     completed = False
@@ -163,3 +201,51 @@ def calculate_observation_history(
         )
     return total_actual_duration, remaining_duration
 
+
+def validate_observation_history(
+    task: Task,
+    observations: list[Observation]
+) -> None:
+    if task is None:
+        raise ValueError("Task cannot be None.")
+    if observations is None:
+        raise ValueError("Observations cannot be None.")
+    if len(observations) == 0:
+        raise ValueError("Observations cannot be empty.")
+    for observation in observations:
+        if observation is None:
+            raise ValueError("Observations cannot contain None.")
+        if observation.task is not task:
+            raise ValueError("Observation does not belong to the provided task.")
+    for previous, current in zip(observations, observations[1:]):
+        if previous.actual_start > current.actual_start:
+            raise ValueError("Observations must be in chronological order.")
+        if previous.actual_end > current.actual_start:
+            raise ValueError("Observations must be chronological and non-overlapping.")
+
+    seen_execution = False
+    for index, observation in enumerate(observations):
+        if observation.outcome is ObservationOutcome.NOT_STARTED and seen_execution:
+            raise ValueError("NOT_STARTED observation cannot occur after execution has begun.")
+        if observation.outcome is not ObservationOutcome.NOT_STARTED:
+            seen_execution = True
+        if index < len(observations) - 1 and observation.outcome in (
+            ObservationOutcome.COMPLETED,
+            ObservationOutcome.CANCELLED,
+        ):
+            raise ValueError("Observations after a completed or cancelled observation are not allowed.")
+
+
+def  calculate_observation_history_summary(
+    task: Task,
+    observations: list[Observation],
+) -> ObservationHistorySummary:
+    total_actual_duration, remaining_duration = calculate_observation_history(task, observations)
+    final_outcome = observations[-1].outcome
+    if final_outcome is ObservationOutcome.COMPLETED:
+        remaining_duration = timedelta(0)
+    return ObservationHistorySummary(
+        total_actual_duration=total_actual_duration,
+        remaining_duration=remaining_duration,
+        final_outcome=final_outcome
+    )

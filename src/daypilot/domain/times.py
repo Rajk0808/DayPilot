@@ -9,6 +9,8 @@ from .enums import ConstraintType
 
 def _normalize_timestamp(value: datetime) -> datetime:
     """Require a timezone and normalize timestamps to UTC."""
+    if value is None:
+        raise ValueError("Timestamp cannot be None.")
     if value.utcoffset() is None:
         raise ValueError("Timestamps must be timezone-aware.")
     return value.astimezone(timezone.utc)
@@ -57,6 +59,12 @@ class Constraint:
     rule_information: TimeWindow
     description: str = ""
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.type, ConstraintType):
+            raise ValueError("Constraint type must be valid.")
+        if not isinstance(self.rule_information, TimeWindow):
+            raise ValueError("Constraint rule information must be a time window.")
+
 
 def generate_time_windows(
     day_start: datetime,
@@ -64,6 +72,12 @@ def generate_time_windows(
     calendar_events: list[CalendarEvent],
     hard_constraints: list[Constraint],
 ) -> list[TimeWindow]:
+    if calendar_events is None or hard_constraints is None:
+        raise ValueError("Calendar events and hard constraints cannot be None.")
+    if any(event is None for event in calendar_events):
+        raise ValueError("Calendar events cannot contain None.")
+    if any(constraint is None for constraint in hard_constraints):
+        raise ValueError("Constraints cannot contain None.")
     day = TimeWindow(day_start, day_end)
     if any(constraint.type is not ConstraintType.HARD_CONSTRAINT
            for constraint in hard_constraints):

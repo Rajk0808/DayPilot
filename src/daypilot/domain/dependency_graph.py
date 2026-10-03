@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .enums import TaskStatus
 from .task import Task
 
 
@@ -9,8 +10,10 @@ class DependencyGraph:
         self.prerequisites: dict[str, set[str]] = {}
         self.dependents: dict[str, set[str]] = {}
 
-    def register_task(self, task: Task) -> None:
+    def register_task(self, task: Task | None) -> None:
         """Add a task to this graph, keyed by its stable task ID."""
+        if task is None:
+            raise ValueError("Task cannot be None.")
         existing = self.tasks.get(task.id)
         if existing is not None and existing is not task:
             raise ValueError(f"A different task with ID {task.id!r} is already registered.")
@@ -78,27 +81,35 @@ class DependencyGraph:
             del self.dependents[prerequisite_id]
 
     def get_prerequisites(self, task: Task) -> list[Task]:
+        if task is None or self.tasks.get(task.id) is not task:
+            raise ValueError("Task is not registered in this graph.")
         return [self.tasks[task_id] for task_id in self.prerequisites.get(task.id, ())]
 
     def get_dependents(self, task: Task) -> list[Task]:
+        if task is None or self.tasks.get(task.id) is not task:
+            raise ValueError("Task is not registered in this graph.")
         return [self.tasks[task_id] for task_id in self.dependents.get(task.id, ())]
 
     def has_dependency(self, dependent: Task, prerequisite: Task) -> bool:
+        if (dependent is None or prerequisite is None
+                or self.tasks.get(dependent.id) is not dependent
+                or self.tasks.get(prerequisite.id) is not prerequisite):
+            raise ValueError("One or both tasks are not registered in this graph.")
         return prerequisite.id in self.prerequisites.get(dependent.id, set())
 
     def can_execute(self, task: Task) -> bool:
-        if task.id not in self.tasks:
+        if task is None or self.tasks.get(task.id) is not task:
             return False
         
         if not task.is_atomic:
             return False
 
-        if not task.status == "not_started":
+        if task.status is not TaskStatus.NOT_STARTED:
             return False
 
         prereq = self.prerequisites.get(task.id, ())
         for i in prereq:
-            if not self.tasks[i].status == "completed":
+            if self.tasks[i].status is not TaskStatus.COMPLETED:
                 return False
 
         return True
@@ -125,3 +136,19 @@ class DependencyGraph:
         if len(order) != len(self.tasks):
             raise ValueError("Dependency graph contains a cycle.")
         return order
+
+
+    def unregister_task(self, task: Task) -> None:
+        if task is None:
+            raise ValueError("Task cannot be None.")
+        if self.tasks.get(task.id) is not task:
+            raise ValueError("Task is not registered in this graph.")
+        if self.prerequisites.get(task.id):
+            raise ValueError("Task has prerequisites and cannot be unregistered.")
+        if self.dependents.get(task.id):
+            raise ValueError("Task has dependents and cannot be unregistered.")
+
+        self.prerequisites.pop(task.id, None)
+        self.dependents.pop(task.id, None)
+        del self.tasks[task.id]
+        

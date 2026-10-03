@@ -24,6 +24,26 @@ def test_add_dependency_records_edge():
     assert graph.has_dependency(a, b)
 
 
+def test_register_task_rejects_none():
+    with pytest.raises(ValueError, match="Task cannot be None"):
+        DependencyGraph().register_task(None)
+
+
+def test_query_methods_reject_equal_valued_unowned_tasks():
+    owned_a = Task(id="A", title="A")
+    owned_b = Task(id="B", title="B")
+    lookalike_a = Task(id="A", title="A")
+    graph = make_graph(owned_a, owned_b)
+    graph.add_dependency(owned_a, owned_b)
+
+    with pytest.raises(ValueError):
+        graph.get_prerequisites(lookalike_a)
+    with pytest.raises(ValueError):
+        graph.get_dependents(lookalike_a)
+    with pytest.raises(ValueError):
+        graph.has_dependency(lookalike_a, owned_b)
+
+
 def test_cannot_add_self_dependency():
     a = Task(id="A", title="A")
     graph = make_graph(a)
@@ -183,6 +203,14 @@ def test_can_execute_requires_eligible_status_and_completed_prerequisites():
     assert graph.can_execute(task) is False
 
 
+def test_can_execute_rejects_equal_valued_task_that_is_not_owned():
+    owned = Task(id="A", title="A", status=TaskStatus.NOT_STARTED)
+    lookalike = Task(id="A", title="A", status=TaskStatus.NOT_STARTED)
+    graph = make_graph(owned)
+
+    assert graph.can_execute(lookalike) is False
+
+
 def test_get_ready_tasks_returns_only_executable_tasks():
     ready = Task(id="ready", title="Ready", status=TaskStatus.NOT_STARTED)
     ineligible = Task(id="done", title="Done", status=TaskStatus.COMPLETED)
@@ -206,3 +234,18 @@ def test_execution_order_places_prerequisites_first():
     positions = {task.id: index for index, task in enumerate(order)}
 
     assert positions["C"] < positions["B"] < positions["A"]
+
+
+def test_execution_order_places_all_branching_prerequisites_before_dependent():
+    a = Task(id="A", title="A")
+    b = Task(id="B", title="B")
+    c = Task(id="C", title="C")
+    graph = make_graph(a, b, c)
+    graph.add_dependency(c, a)
+    graph.add_dependency(c, b)
+
+    order = graph.get_execution_order()
+    positions = {task.id: index for index, task in enumerate(order)}
+
+    assert positions["A"] < positions["C"]
+    assert positions["B"] < positions["C"]
