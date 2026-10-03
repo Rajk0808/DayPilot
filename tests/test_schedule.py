@@ -1,11 +1,20 @@
 from datetime import datetime, timedelta, timezone
+from typing import cast
 
 import pytest
 
-from daypilot.domain.enums import Priority, TaskStatus
-from daypilot.domain.schedule import ScheduleBlock, schedule_tasks
+from daypilot.domain.enums import ConstraintType, Priority, SchedulingStatus, TaskStatus
+from daypilot.domain.dependency_graph import DependencyGraph
+from daypilot.domain.schedule import (
+    Plan,
+    ScheduleBlock,
+    SchedulingCandidate,
+    SchedulingRunResult,
+    evaluate_soft_constraints,
+    schedule_tasks,
+)
 from daypilot.domain.task import Task
-from daypilot.domain.times import TimeWindow
+from daypilot.domain.times import Constraint, TimeWindow
 
 
 UTC = timezone.utc
@@ -35,9 +44,12 @@ def make_task(
     )
 
 
-def blocks_for(result: list[ScheduleBlock]) -> list[tuple[str, datetime, datetime]]:
+def blocks_for(result: SchedulingRunResult) -> list[tuple[str, datetime, datetime]]:
     """Return a compact representation useful for assertions."""
-    return [(block.task.id, block.start, block.end) for block in result]
+    return [
+        (block.task.id, block.start, block.end)
+        for block in result.scheduled_blocks
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +121,21 @@ def test_task_that_does_not_fit_is_left_unscheduled():
     result = schedule_tasks([task], [window])
 
     assert result == []
+
+
+def test_every_unscheduled_task_is_reported_exactly_once():
+    tasks = [
+        make_task("A", duration_minutes=60),
+        make_task("B", duration_minutes=60),
+        make_task("C", duration_minutes=60),
+    ]
+
+    result = schedule_tasks(tasks, [TimeWindow(dt(9), dt(10))])
+
+    assert len(result.scheduled_blocks) == 1
+    assert result.scheduled_blocks[0].task is tasks[0]
+    assert [item.task for item in result.unresolved_task_results] == tasks[1:]
+    assert len(result.unresolved_task_results) == len(tasks[1:])
 
 
 # ---------------------------------------------------------------------------
@@ -408,6 +435,13 @@ def test_schedule_block_contains_atomic_task():
     assert block.task is task
 
 
+def test_schedule_block_rejects_naive_datetimes():
+    task = make_task("A", duration_minutes=30)
+
+    with pytest.raises(ValueError, match="timezone-aware"):
+        ScheduleBlock(task, datetime(2026, 9, 28, 9), dt(9, 30))
+
+
 def test_schedule_block_matches_task_duration():
     task = make_task(
         "A",
@@ -441,5 +475,180 @@ def test_schedule_block_stays_inside_time_window():
 
     assert window.start <= block.start
     assert block.end <= window.end
+
+
+def test_scheduler_respects_transitive_dependencies_without_mutating_tasks():
+    first, second, third = [
+        make_task(task_id, duration_minutes=30, priority=Priority.MEDIUM)
+        for task_id in ("A", "B", "C")
+    ]
+    graph = DependencyGraph()
+    for task in (first, second, third):
+        graph.register_task(task)
+    graph.add_dependency(second, first)
+    graph.add_dependency(third, second)
+
+    result = schedule_tasks(
+        [third, second, first],
+        [TimeWindow(dt(9), dt(11))],
+        [],
+        graph,
+    )
+    assert [block.task for block in result] == [first, second, third]
+    assert all(task.scheduling_status is SchedulingStatus.UNSCHEDULED
+               for task in (first, second, third))
+
+
+@pytest.mark.parametrize("metadata", [None, [], {1: "value"}, {"key": 1}])
+def test_plan_rejects_invalid_metadata(metadata):
+    with pytest.raises(ValueError, match="metadata"):
+        Plan("plan", dt(9), timedelta(hours=2), [], metadata)
+
+
+@pytest.mark.parametrize(
+    ("plan_id", "horizon"),
+    [(None, timedelta(hours=1)), ("", timedelta(hours=1)), ("plan", None)],
+)
+def test_plan_rejects_invalid_identity_or_horizon(plan_id, horizon):
+    with pytest.raises(ValueError):
+        Plan(plan_id, dt(9), horizon, [], {})
+
+
+def test_scheduling_candidate_duration_controls_placement_length():
+    task = make_task("A", duration_minutes=120)
+    graph = DependencyGraph()
+    graph.register_task(task)
+
+    result = schedule_tasks(
+        [SchedulingCandidate(task, timedelta(minutes=45))],
+        [TimeWindow(dt(9), dt(10))],
+        [],
+        graph,
+    )
+
+    assert result[0].end - result[0].start == timedelta(minutes=45)
+
+
+@pytest.mark.parametrize("duration", [timedelta(0), timedelta(minutes=-1)])
+def test_scheduling_candidate_rejects_non_positive_duration(duration):
+    task = make_task("A", duration_minutes=30)
+
+    with pytest.raises(ValueError, match="positive"):
+        SchedulingCandidate(task, duration)
+
+
+def test_soft_constraint_preference_can_move_task_later_within_window():
+    task = make_task("A", duration_minutes=60)
+    graph = DependencyGraph()
+    graph.register_task(task)
+    preference = Constraint(
+        ConstraintType.SOFT_CONSTRAINT,
+        TimeWindow(dt(11), dt(12)),
+    )
+
+    result = schedule_tasks(
+        [task], [TimeWindow(dt(9), dt(13))], [preference], graph
+    )
+
+    assert result[0].start == dt(11)
+
+
+def test_dependency_earliest_start_interacts_with_soft_preference():
+    prerequisite = make_task("A", duration_minutes=60)
+    dependent = make_task("B", duration_minutes=60)
+    graph = DependencyGraph()
+    graph.register_task(prerequisite)
+    graph.register_task(dependent)
+    graph.add_dependency(dependent, prerequisite)
+    prerequisite_block = ScheduleBlock(prerequisite, dt(9), dt(10))
+    preference = Constraint(
+        ConstraintType.SOFT_CONSTRAINT,
+        TimeWindow(dt(9), dt(12)),
+    )
+
+    result = schedule_tasks(
+        [dependent],
+        [TimeWindow(dt(9), dt(12))],
+        [preference],
+        graph,
+        [prerequisite_block],
+    )
+
+    assert len(result.scheduled_blocks) == 1
+    assert result.scheduled_blocks[0].task is dependent
+    assert result.scheduled_blocks[0].start == dt(10)
+    assert evaluate_soft_constraints(
+        result.scheduled_blocks[0].start,
+        result.scheduled_blocks[0].end,
+        [preference],
+    ) == 1
+
+
+def test_dependent_can_start_exactly_at_prerequisite_end():
+    prerequisite = make_task("A", duration_minutes=60)
+    dependent = make_task("B", duration_minutes=60)
+    graph = DependencyGraph()
+    graph.register_task(prerequisite)
+    graph.register_task(dependent)
+    graph.add_dependency(dependent, prerequisite)
+
+    result = schedule_tasks(
+        [dependent],
+        [TimeWindow(dt(9), dt(12))],
+        [],
+        graph,
+        [ScheduleBlock(prerequisite, dt(9), dt(10))],
+    )
+
+    assert result.scheduled_blocks[0].start == dt(10)
+    assert result.scheduled_blocks[0].end == dt(11)
+
+
+def test_short_soft_preference_does_not_block_scheduling():
+    task = make_task("A", duration_minutes=60)
+    graph = DependencyGraph()
+    graph.register_task(task)
+    preference = Constraint(
+        ConstraintType.SOFT_CONSTRAINT,
+        TimeWindow(dt(10), dt(10, 30)),
+    )
+
+    result = schedule_tasks(
+        [task],
+        [TimeWindow(dt(9), dt(12))],
+        [preference],
+        graph,
+    )
+
+    assert len(result.scheduled_blocks) == 1
+    assert result.scheduled_blocks[0].end - result.scheduled_blocks[0].start == timedelta(hours=1)
+
+
+def test_scheduler_avoids_overlap_with_supplied_scheduled_blocks():
+    task = make_task("A", duration_minutes=60)
+    existing = make_task("existing", duration_minutes=60)
+    graph = DependencyGraph()
+    graph.register_task(task)
+    graph.register_task(existing)
+    existing_block = ScheduleBlock(existing, dt(9), dt(10))
+
+    result = schedule_tasks(
+        [task],
+        [TimeWindow(dt(9), dt(12))],
+        [],
+        graph,
+        [existing_block],
+    )
+
+    assert len(result.scheduled_blocks) == 1
+    assert result.scheduled_blocks[0].start == dt(10)
+    assert result.scheduled_blocks[0].end == dt(11)
+
+
+def test_scheduler_rejects_none_window_and_soft_constraint_entries():
+    with pytest.raises(ValueError, match="Time windows cannot contain None"):
+        schedule_tasks([], cast(list[TimeWindow], [None]))
+    with pytest.raises(ValueError, match="Soft constraints cannot contain None"):
+        schedule_tasks([], [], cast(list[Constraint], [None]))
 
 

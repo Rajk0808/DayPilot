@@ -43,3 +43,24 @@ class ObservationOutcome(str, Enum):
     PARTIALLY_COMPLETED = "partially_completed"
     CANCELLED = "cancelled"
     NOT_STARTED = "not_started"
+
+
+class PlanningChangeType(str, Enum):
+    TASK_ADDED = "task_added"
+    TASK_UPDATED = "task_updated"
+    TASK_REMOVED = "task_removed"
+
+    DEPENDENCY_ADDED = "dependency_added"
+    DEPENDENCY_REMOVED = "dependency_removed"
+
+    CALENDAR_EVENT_ADDED = "calendar_event_added"
+    CALENDAR_EVENT_UPDATED = "calendar_event_updated"
+    CALENDAR_EVENT_REMOVED = "calendar_event_removed"
+
+    CONSTRAINT_ADDED = "constraint_added"
+    CONSTRAINT_UPDATED = "constraint_updated"
+    CONSTRAINT_REMOVED = "constraint_removed"
+
+    OBSERVATION_RECORDED = "observation_recorded"
+
+    PLAN_REPLACED = "plan_replaced"
