@@ -1,7 +1,8 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import Any
 from daypilot.domain.dependency_graph import DependencyGraph
-from daypilot.domain.enums import SchedulingStatus, TaskStatus
+from daypilot.domain.enums import Priority, SchedulingStatus, TaskStatus
 from daypilot.domain.goal import Goal
 from daypilot.domain.observation import (
     Observation,
@@ -119,6 +120,54 @@ class PlannerState:
         self.dependency_graph.register_task(task)
         self.tasks.append(task)
 
+    def update_task(self, task: Task, **updates: Any) -> None:
+        """Update supported task fields and synchronize its task tree."""
+        if task is None:
+            raise ValueError("Task cannot be None.")
+        if not self._contains_task(task):
+            raise ValueError("Task is not in the planner state.")
+        allowed_fields = {
+            "title",
+            "description",
+            "priority",
+            "estimated_duration",
+            "deadline",
+            "status",
+        }
+        unknown_fields = set(updates) - allowed_fields
+        if unknown_fields:
+            raise ValueError(f"Unsupported task update fields: {sorted(unknown_fields)!r}.")
+        if not updates:
+            raise ValueError("Task update cannot be empty.")
+        if "title" in updates and not isinstance(updates["title"], str):
+            raise ValueError("Task title must be a string.")
+        if "description" in updates and not isinstance(updates["description"], str):
+            raise ValueError("Task description must be a string.")
+        if "priority" in updates and updates["priority"] is not None \
+                and not isinstance(updates["priority"], Priority):
+            raise ValueError("Task priority must be a valid Priority.")
+        if "estimated_duration" in updates:
+            duration = updates["estimated_duration"]
+            if not isinstance(duration, timedelta) or duration <= timedelta(0):
+                raise ValueError("Task estimated duration must be a positive timedelta.")
+        if "deadline" in updates and updates["deadline"] is not None:
+            deadline = updates["deadline"]
+            if not isinstance(deadline, datetime) or deadline.utcoffset() is None:
+                raise ValueError("Task deadline must be timezone-aware.")
+        if "status" in updates and not isinstance(updates["status"], TaskStatus):
+            raise ValueError("Task status must be a valid TaskStatus.")
+
+        original_values = {field: getattr(task, field) for field in updates}
+        try:
+            for field, value in updates.items():
+                setattr(task, field, value)
+            self.synchronize_task_states()
+        except Exception:
+            for field, value in original_values.items():
+                setattr(task, field, value)
+            self.synchronize_task_states()
+            raise
+
     def remove_task(self, task: Task) -> None:
         """Remove an unscheduled task; scheduled removal uses replanning."""
         self.validate_task_removal(task, allow_scheduled=False)
@@ -170,6 +219,36 @@ class PlannerState:
                 if any(existing is root_task for existing in goal.root_tasks):
                     raise ValueError("A task cannot be a root task of multiple goals.")
         self.goals.append(goal)
+
+    def update_goal(self, goal: Goal, **updates: Any) -> None:
+        """Update supported goal fields through the planner aggregate."""
+        if goal is None:
+            raise ValueError("Goal cannot be None.")
+        if not any(existing is goal for existing in self.goals):
+            raise ValueError("Goal is not in the planner state.")
+        allowed_fields = {"title", "description", "deadline", "status"}
+        unknown_fields = set(updates) - allowed_fields
+        if unknown_fields:
+            raise ValueError(f"Unsupported goal update fields: {sorted(unknown_fields)!r}.")
+        if not updates:
+            raise ValueError("Goal update cannot be empty.")
+        if "title" in updates and not isinstance(updates["title"], str):
+            raise ValueError("Goal title must be a string.")
+        if "description" in updates and not isinstance(updates["description"], str):
+            raise ValueError("Goal description must be a string.")
+        if "deadline" in updates and updates["deadline"] is not None:
+            deadline = updates["deadline"]
+            if not isinstance(deadline, datetime) or deadline.utcoffset() is None:
+                raise ValueError("Goal deadline must be timezone-aware.")
+
+        original_values = {field: getattr(goal, field) for field in updates}
+        try:
+            for field, value in updates.items():
+                setattr(goal, field, value)
+        except Exception:
+            for field, value in original_values.items():
+                setattr(goal, field, value)
+            raise
 
 
     def remove_goal(self, goal: Goal)-> None:
