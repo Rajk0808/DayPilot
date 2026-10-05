@@ -205,6 +205,20 @@ def test_synchronize_task_states_updates_composite_after_child_status_change():
     assert parent.scheduling_status is SchedulingStatus.UNSCHEDULED
 
 
+def test_update_task_mutates_through_aggregate_and_rejects_protected_fields():
+    parent, child = task("P"), task("A")
+    parent.children.append(child)
+    child.parent = parent
+    planner = state([parent, child])
+
+    planner.update_task(child, status=TaskStatus.COMPLETED)
+
+    assert child.status is TaskStatus.COMPLETED
+    assert parent.status is TaskStatus.COMPLETED
+    with pytest.raises(ValueError, match="Unsupported"):
+        planner.update_task(child, scheduling_status=SchedulingStatus.SCHEDULED)
+
+
 def test_record_observation_synchronizes_composite_parent():
     parent, child = task("P"), task("A")
     parent.children.append(child)
