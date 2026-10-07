@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from daypilot.application.application_service import DayPilotApplicationService
-from daypilot.application.calendar_service import CalendarApplicationService
+from daypilot.application.times_service import CalendarApplicationService
 from daypilot.application.constraint_service import ConstraintApplicationService
 from daypilot.application.dependency_service import DependencyApplicationService
 from daypilot.application.goal_service import GoalApplicationService

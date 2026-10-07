@@ -1509,6 +1509,19 @@ Constraint
 
 and dependency/hierarchy operations.
 
+### Constraint identity and persistence
+
+`Constraint` currently has no domain ID. The persistent application facade
+therefore locates an existing constraint by value equality when handling
+update and removal requests. This is a temporary limitation: an equal-valued
+but distinct `Constraint` can match the stored constraint, even though the
+application layer otherwise uses object identity for aggregate ownership.
+
+Do not treat value equality as the intended identity contract. A future domain
+and persistence design decision should give `Constraint` a stable logical ID
+and resolve reconstructed constraints by that ID. That identity change is
+deferred from the persistence application integration.
+
 ---
 
 # 12. Application-Level Failure Model

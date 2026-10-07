@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from daypilot.application.calendar_service import (
+from daypilot.application.times_service import (
     CalendarApplicationService,
     CalendarEventUpdateRequest,
 )

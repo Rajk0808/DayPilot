@@ -2,8 +2,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from daypilot.application import calendar_service
-from daypilot.application.calendar_service import (
+from daypilot.application import times_service
+from daypilot.application.times_service import (
     CalendarApplicationService,
     CalendarEventUpdateRequest,
 )
@@ -213,7 +213,7 @@ def test_update_failure_restores_event_and_plan(monkeypatch):
     def fail_replan(*args, **kwargs):
         raise RuntimeError("planning failed")
 
-    monkeypatch.setattr(calendar_service, "replan", fail_replan)
+    monkeypatch.setattr(times_service, "replan", fail_replan)
 
     with pytest.raises(RuntimeError, match="planning failed"):
         CalendarApplicationService().update_event(
@@ -240,7 +240,7 @@ def test_commit_failure_restores_event_and_plan(monkeypatch):
     def fail_commit(*args, **kwargs):
         raise RuntimeError("commit failed")
 
-    monkeypatch.setattr(calendar_service, "apply_replanning_result", fail_commit)
+    monkeypatch.setattr(times_service, "apply_replanning_result", fail_commit)
 
     with pytest.raises(RuntimeError, match="commit failed"):
         CalendarApplicationService().update_event(
@@ -263,7 +263,7 @@ def test_add_and_remove_failures_restore_event_state(monkeypatch):
     def fail_replan(*args, **kwargs):
         raise RuntimeError("planning failed")
 
-    monkeypatch.setattr(calendar_service, "replan", fail_replan)
+    monkeypatch.setattr(times_service, "replan", fail_replan)
     with pytest.raises(RuntimeError):
         service.add_event(new_event, add_state, DATE, DATE + HORIZON)
     assert new_event not in add_state.calendar_events
