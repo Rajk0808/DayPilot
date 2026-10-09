@@ -47,7 +47,6 @@ class ScheduleBlock:
     task: Task
     start: datetime
     end: datetime
-    status: TaskStatus | None = None
 
     def __post_init__(self) -> None:
         if self.task is None:
@@ -386,7 +385,6 @@ def evaluate_task_placement(
                 task=task,
                 start=candidate_start,
                 end=candidate_end,
-                status=task.status,
             )
             rank = (
                 -evaluate_soft_constraints(candidate.start, candidate.end, soft_constraints),

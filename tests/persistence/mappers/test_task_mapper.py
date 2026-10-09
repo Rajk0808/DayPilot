@@ -142,7 +142,7 @@ def test_reconstruction_rejects_invalid_hierarchy_records(records, expected):
 
 def test_reconstruction_rejects_actual_descendant_cycle_atomically():
     records = [
-        make_record("A", children_ids=["B"]),
+        make_record("A", parent_id="C", children_ids=["B"]),
         make_record("B", parent_id="A", children_ids=["C"]),
         make_record("C", parent_id="B", children_ids=["A"]),
     ]

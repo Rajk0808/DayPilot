@@ -5,6 +5,16 @@ from daypilot.domain.goal import Goal
 from daypilot.domain.planner import PlannerState
 
 @dataclass(frozen=True)
+class GoalCreateRequest:
+    id: str
+    title: str
+    description: str = ""
+    deadline: datetime | None = None
+    status: object | None = None
+    root_task_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class GoalUpdateRequest:
     title: str | None = None
     description: str | None = None

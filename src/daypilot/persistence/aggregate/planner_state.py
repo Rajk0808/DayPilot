@@ -160,7 +160,6 @@ def to_persisted_planner_state(
         observations=state.observations,
     )
 
-    state_record = planner_state_to_record(state)
     tasks = {task.id: task_to_record(task) for task in state.tasks}
     goals = {goal.id: goal_to_record(goal) for goal in state.goals}
     dependencies: dict[str, DependencyRecord] = {}
@@ -176,6 +175,7 @@ def to_persisted_planner_state(
     for constraint in state.constraints:
         item = constraint_to_record(constraint)
         constraints[constraint_id(item)] = item
+    state_record = planner_state_to_record(state, constraint_ids=list(constraints))
 
     plans: dict[str, PlanRecord] = {}
     schedule_blocks: dict[str, ScheduleBlockRecord] = {}

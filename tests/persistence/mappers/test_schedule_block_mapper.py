@@ -24,6 +24,8 @@ def test_schedule_block_maps_task_id_and_utc_microseconds():
     restored = from_record(record, context)
 
     assert record.task_id == "task"
+    assert not hasattr(record, "status")
+    assert not hasattr(restored, "status")
     assert restored.task is context.tasks["task"]
     assert restored.start == block.start
     assert restored.end == block.end
