@@ -12,7 +12,6 @@ from daypilot.domain.enums import (
     ObservationOutcome,
     PlanningChangeType,
     SchedulingStatus,
-    TaskStatus,
 )
 from daypilot.domain.goal import Goal
 from daypilot.domain.observation import Observation
@@ -53,7 +52,7 @@ def state_with_existing_observation():
     graph = DependencyGraph()
     graph.register_task(task)
     goal = Goal("G1", "Goal", root_tasks=[task])
-    block = ScheduleBlock(task, START, START + timedelta(hours=1), TaskStatus.NOT_STARTED)
+    block = ScheduleBlock(task, START, START + timedelta(hours=1))
     plan = Plan("P1", START, timedelta(hours=4), [block], {})
     observation = Observation(
         task,

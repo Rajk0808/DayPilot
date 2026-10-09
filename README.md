@@ -1517,10 +1517,12 @@ update and removal requests. This is a temporary limitation: an equal-valued
 but distinct `Constraint` can match the stored constraint, even though the
 application layer otherwise uses object identity for aggregate ownership.
 
-Do not treat value equality as the intended identity contract. A future domain
-and persistence design decision should give `Constraint` a stable logical ID
-and resolve reconstructed constraints by that ID. That identity change is
-deferred from the persistence application integration.
+The relational schema and `ConstraintRecord` now define a stable UUID
+`constraint_id` owned by persistence; the domain `Constraint` remains
+unchanged. The application facade still receives ID-free domain objects and
+currently resolves update/removal requests by value equality. The application
+boundary will need a persistence identity context before that limitation can
+be removed without adding identity to the domain.
 
 ---
 

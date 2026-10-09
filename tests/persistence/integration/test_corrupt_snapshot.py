@@ -1,5 +1,3 @@
-from dataclasses import replace
-
 import pytest
 
 from daypilot.persistence.aggregate.planner_state import (
@@ -68,14 +66,13 @@ def test_duplicate_entity_ids_are_rejected(complete_planner_state):
         from_persisted_planner_state(snapshot)
 
 
-def test_conflicting_schedule_block_records_are_rejected(complete_planner_state):
+def test_repeated_schedule_block_record_resolves_to_same_object(complete_planner_state):
     snapshot = snapshot_of(complete_planner_state)
     task_context = TaskMappingContext()
     task_context.reconstruct(list(snapshot.tasks.values()))
     block_context = ScheduleBlockMappingContext()
     record = next(iter(snapshot.schedule_blocks.values()))
-    block_context.resolve(record, task_context)
-    conflicting = replace(record, status="completed")
+    first = block_context.resolve(record, task_context)
+    second = block_context.resolve(record, task_context)
 
-    with pytest.raises(ValueError, match="Conflicting schedule block records"):
-        block_context.resolve(conflicting, task_context)
+    assert second is first

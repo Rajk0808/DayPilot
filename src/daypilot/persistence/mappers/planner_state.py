@@ -1,10 +1,10 @@
 import json
 from collections.abc import Mapping
+from uuid import UUID
 
 from daypilot.domain.dependency_graph import DependencyGraph
 from daypilot.domain.planner import PlannerState
 from daypilot.persistence.mappers.constraint import from_record as constraint_from_record
-from daypilot.persistence.mappers.constraint import to_record as constraint_to_record
 from daypilot.persistence.mappers.dependency import from_record as dependency_from_record
 from daypilot.persistence.mappers.dependency import to_record as dependency_to_record
 from daypilot.persistence.mappers.goal import from_record as goal_from_record
@@ -35,14 +35,25 @@ def dependency_id(record: DependencyRecord) -> str:
 
 
 def constraint_id(record: ConstraintRecord) -> str:
-    return json.dumps(
-        [record.type, record.rule_information_start_timestamp_microseconds,
-         record.rule_information_end_timestamp_microseconds, record.description],
-        separators=(",", ":"),
-    )
+    if not isinstance(record.constraint_id, UUID):
+        raise ValueError("Constraint record ID must be a UUID.")
+    return str(record.constraint_id)
 
 
-def to_record(state: PlannerState) -> PlannerStateRecord:
+def to_record(
+    state: PlannerState,
+    *,
+    constraint_ids: list[str] | None = None,
+) -> PlannerStateRecord:
+    if constraint_ids is None:
+        if state.constraints:
+            raise ValueError(
+                "Constraint record IDs must be provided when mapping a state with constraints."
+            )
+        constraint_ids = []
+    elif len(constraint_ids) != len(state.constraints):
+        raise ValueError("Constraint IDs must match the planner state's constraints.")
+
     dependencies = [
         dependency_to_record(state.dependency_graph.tasks[dependent_id],
                              state.dependency_graph.tasks[prerequisite_id])
@@ -58,13 +69,12 @@ def to_record(state: PlannerState) -> PlannerStateRecord:
         block_key = schedule_block_id(observation.task.id, block_start, block_end)
         observation_keys.append(observation_id(observation.task.id, block_key, start, end))
 
-    constraint_records = [constraint_to_record(item) for item in state.constraints]
     return PlannerStateRecord(
         goal_ids=[goal.id for goal in state.goals],
         task_ids=[task.id for task in state.tasks],
         dependency_ids=[dependency_id(item) for item in dependencies],
         calendar_event_ids=[event.id for event in state.calendar_events],
-        constraint_ids=[constraint_id(item) for item in constraint_records],
+        constraint_ids=list(constraint_ids),
         current_plan_id=state.current_plan.id if state.current_plan is not None else None,
         observation_ids=observation_keys,
     )

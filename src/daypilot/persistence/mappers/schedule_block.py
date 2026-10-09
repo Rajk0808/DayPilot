@@ -1,6 +1,5 @@
 import json
 
-from daypilot.domain.enums import TaskStatus
 from daypilot.domain.schedule import ScheduleBlock
 from daypilot.persistence.mappers.task import TaskMappingContext
 from daypilot.persistence.models.schedule import ScheduleBlockRecord
@@ -26,7 +25,6 @@ def to_record(block: ScheduleBlock) -> ScheduleBlockRecord:
         task_id=block.task.id,
         start_timestamp_microseconds=start,
         end_timestamp_microseconds=end,
-        status=block.status.value if block.status is not None else None,
     )
 
 
@@ -45,7 +43,6 @@ def _map_record(record: ScheduleBlockRecord, task_mapping_context: TaskMappingCo
         task=task,
         start=timestamp_microseconds_to_datetime(record.start_timestamp_microseconds),
         end=timestamp_microseconds_to_datetime(record.end_timestamp_microseconds),
-        status=TaskStatus(record.status) if record.status is not None else None,
     )
 
 

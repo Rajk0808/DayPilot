@@ -90,7 +90,6 @@ def test_task_exactly_fits_window():
     assert block.task is task
     assert block.start == dt(9)
     assert block.end == dt(10)
-    assert block.status == task.status
 
 
 def test_task_shorter_than_window_occupies_only_required_duration():
@@ -429,7 +428,6 @@ def test_schedule_block_contains_atomic_task():
         task=task,
         start=dt(9),
         end=dt(9, 30),
-        status=TaskStatus.NOT_STARTED,
     )
 
     assert block.task is task

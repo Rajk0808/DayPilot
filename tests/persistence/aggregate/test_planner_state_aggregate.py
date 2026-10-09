@@ -1,5 +1,6 @@
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 import pytest
 
@@ -44,11 +45,9 @@ def make_state():
     graph.register_task(dependent)
     graph.add_dependency(dependent, prerequisite)
     goal = Goal("goal-1", "Finish report", root_tasks=[prerequisite, dependent])
-    prerequisite_block = ScheduleBlock(
-        prerequisite, start, start + timedelta(hours=1), TaskStatus.NOT_STARTED
-    )
+    prerequisite_block = ScheduleBlock(prerequisite, start, start + timedelta(hours=1))
     dependent_block = ScheduleBlock(
-        dependent, start + timedelta(hours=1), start + timedelta(hours=2), TaskStatus.NOT_STARTED
+        dependent, start + timedelta(hours=1), start + timedelta(hours=2)
     )
     plan = Plan(
         "plan-1", start, timedelta(hours=3),
@@ -83,6 +82,11 @@ def test_planner_state_snapshot_round_trip_preserves_graph_identity():
 
     assert snapshot.state_id == "state-1"
     assert snapshot.version == 3
+    assert len(snapshot.constraints) == 1
+    constraint_key, constraint_record = next(iter(snapshot.constraints.items()))
+    assert isinstance(constraint_record.constraint_id, UUID)
+    assert constraint_key == str(constraint_record.constraint_id)
+    assert snapshot.planner_state_record.constraint_ids == [constraint_key]
     assert isinstance(restored, PlannerState)
     assert [task.id for task in restored.tasks] == ["task-a", "task-b"]
     assert restored.goals[0].id == state.goals[0].id

@@ -6,7 +6,7 @@ from typing import TypeVar
 
 from daypilot.application.application_service import DayPilotApplicationService
 from daypilot.application.constraint_service import ConstraintUpdateRequest
-from daypilot.application.goal_service import GoalUpdateRequest
+from daypilot.application.goal_service import GoalCreateRequest, GoalUpdateRequest
 from daypilot.application.observation_service import ObservationRequest
 from daypilot.application.task_service import TaskCreateRequest, TaskUpdateRequest
 from daypilot.application.times_service import CalendarEventUpdateRequest
@@ -15,6 +15,7 @@ from daypilot.domain.planner import PlannerState
 from daypilot.domain.replan import PlanningChange, ReplanningResult
 from daypilot.domain.task import Task
 from daypilot.domain.times import CalendarEvent, Constraint
+from daypilot.persistence.exceptions import EntityNotFoundError
 from daypilot.persistence.unit_of_works.planner_state import PlannerStateUnitOfWork
 
 
@@ -56,7 +57,7 @@ class PersistentDayPilotApplicationService:
         for candidate in state.tasks:
             if candidate.id == task_id:
                 return candidate
-        raise ValueError(f"Task {task_id!r} does not exist in the planner state.")
+        raise EntityNotFoundError(f"Task {task_id!r} does not exist in the planner state.")
 
     @staticmethod
     def _goal(state: PlannerState, goal: Goal | str) -> Goal:
@@ -64,7 +65,23 @@ class PersistentDayPilotApplicationService:
         for candidate in state.goals:
             if candidate.id == goal_id:
                 return candidate
-        raise ValueError(f"Goal {goal_id!r} does not exist in the planner state.")
+        raise EntityNotFoundError(f"Goal {goal_id!r} does not exist in the planner state.")
+
+    def get_task(self, state_id: str, task_id: str) -> Task:
+        """Load a task from the persisted aggregate by its logical ID."""
+        with self._unit_of_work_factory() as uow:
+            state = uow.planner_states.get(state_id)
+            task = self._task(state, task_id)
+            uow.rollback()
+        return task
+
+    def get_goal(self, state_id: str, goal_id: str) -> Goal:
+        """Load a goal from the persisted aggregate by its logical ID."""
+        with self._unit_of_work_factory() as uow:
+            state = uow.planner_states.get(state_id)
+            goal = self._goal(state, goal_id)
+            uow.rollback()
+        return goal
 
     @staticmethod
     def _calendar_event(state: PlannerState, event: CalendarEvent | str) -> CalendarEvent:
@@ -117,8 +134,18 @@ class PersistentDayPilotApplicationService:
             state, self._task(state, task), planning_start, planning_end
         ))
 
-    def create_goal(self, state_id: str, goal: Goal) -> Goal:
+    def create_goal(self, state_id: str, goal: Goal | GoalCreateRequest) -> Goal:
         def create(state: PlannerState) -> Goal:
+            if isinstance(goal, GoalCreateRequest):
+                canonical_goal = Goal(
+                    id=goal.id,
+                    title=goal.title,
+                    description=goal.description,
+                    deadline=goal.deadline,
+                    status=goal.status,
+                    root_tasks=[self._task(state, task_id) for task_id in goal.root_task_ids],
+                )
+                return self._application.create_goal(canonical_goal, state)
             canonical_goal = Goal(
                 id=goal.id,
                 title=goal.title,

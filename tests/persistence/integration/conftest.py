@@ -7,7 +7,6 @@ from daypilot.domain.enums import (
     ConstraintType,
     ObservationOutcome,
     SchedulingStatus,
-    TaskStatus,
 )
 from daypilot.domain.goal import Goal
 from daypilot.domain.observation import Observation
@@ -43,14 +42,11 @@ def complete_planner_state():
     dependencies.add_dependency(task_three, task_two)
 
     goal = Goal("G1", "Finish the report", root_tasks=[task_one, task_three])
-    block_one = ScheduleBlock(
-        task_two, start, start + timedelta(hours=1), TaskStatus.NOT_STARTED
-    )
+    block_one = ScheduleBlock(task_two, start, start + timedelta(hours=1))
     block_two = ScheduleBlock(
         task_three,
         start + timedelta(hours=1),
         start + timedelta(hours=2),
-        TaskStatus.NOT_STARTED,
     )
     plan = Plan("P1", start, timedelta(hours=3), [block_one, block_two], {"source": "test"})
     observation = Observation(
